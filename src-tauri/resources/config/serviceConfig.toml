@@ -1,0 +1,66 @@
+# Configuration for local services
+[services]
+
+  [services.ollama]
+  name = "ollama"
+  port = 11434
+  base_url = "http://localhost:11434"
+  folder_path = ""
+  init_command = ""
+  status = "stopped"
+  
+  [[services.ollama.endpoints]]
+  path = "/api/generate"
+  method = "POST"
+  desc = "Generate text using the specified model and prompt"
+
+  [services.operator]
+  name = "operator"
+  port = 8001
+  base_url = "http://localhost:8001"
+  folder_path = "/Users/linkling/Services/Operator"
+  init_command = "python app.py"
+  status = "stopped"
+  
+  [[services.operator.endpoints]]
+  path = "/click"
+  method = "POST"
+  desc = "Perform a mouse click at the specified coordinates"
+  
+  [[services.operator.endpoints]]
+  path = "/move"
+  method = "POST"
+  desc = "Move the mouse cursor to the specified coordinates"
+  
+  [[services.operator.endpoints]]
+  path = "/screen_size"
+  method = "GET"
+  desc = "Get the screen dimensions"
+  
+  [[services.operator.endpoints]]
+  path = "/screenshot_base64"
+  method = "POST"
+  desc = "Take a screenshot and return it as a base64 encoded string"
+  
+  [[services.operator.endpoints]]
+  path = "/"
+  method = "GET"
+  desc = "Health check endpoint for the Operator service"
+
+  [services.omniparser]
+  name = "omniparser"
+  port = 8000
+  base_url = "http://localhost:8000"
+  folder_path = "/Users/linkling/Services/OmniParser"
+  init_command = "python -m ./omnitool/omniparserserver/omniparserserver"
+  status = "stopped"
+  
+  [[services.omniparser.endpoints]]
+  path = "/parse/"
+  method = "POST"
+  desc = "Parse an image and return the analysis results"
+  
+  [[services.omniparser.endpoints]]
+  path = "/probe/"
+  method = "GET"
+  desc = "Health check endpoint for the Omniparser service"
