@@ -22,15 +22,21 @@ export const OmniparserView: React.FC = () => {
   // Parse endpoint states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [parsedImage, setParsedImage] = useState<string | null>(null);
-  const [parsedContent, setParsedContent] = useState<any[] | null>(null);
-  const [parseLatency, setParseLatency] = useState<number | null>(null);
   const [isParsing, setIsParsing] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get the omniparser service and update function from the store
+  // Get the omniparser service and store functions
   const omniparserService = useServiceStore(state => state.getService('omniparser'));
   const updateServiceStatus = useServiceStore(state => state.updateServiceStatus);
+  const addEndpointOutput = useServiceStore(state => state.addEndpointOutput);
+  const getEndpointOutputs = useServiceStore(state => state.getEndpointOutputs);
+
+  // Get the latest parse result
+  const getLatestParseResult = () => {
+    if (!omniparserService) return null;
+    const outputs = getEndpointOutputs('omniparser', '/parse/');
+    return outputs.length > 0 ? outputs[outputs.length - 1] : null;
+  };
 
   // Automatically check service status when component mounts
   useEffect(() => {
@@ -50,7 +56,6 @@ export const OmniparserView: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Get the probe endpoint
       const probeEndpoint = omniparserService.endpoints.find(
         endpoint => endpoint.path === '/probe/' && endpoint.method === 'GET'
       );
@@ -59,21 +64,17 @@ export const OmniparserView: React.FC = () => {
         throw new Error('Probe endpoint not found');
       }
 
-      // Use Tauri's fetch which bypasses CORS
       const response = await fetch(getEndpointUrl(omniparserService, probeEndpoint));
-      
       const data = await response.json() as ProbeResponse;
-      setProbeStatus(data.message);
       
-      // Update service status to running in the store
+      setProbeStatus(data.message);
       updateServiceStatus('omniparser', 'running');
+      addEndpointOutput('omniparser', '/probe/', data);
       
       console.log('Probe successful:', data);
     } catch (err) {
       console.error('Probe error:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      
-      // Update service status to error in the store
       updateServiceStatus('omniparser', 'error');
     } finally {
       setIsLoading(false);
@@ -86,17 +87,12 @@ export const OmniparserView: React.FC = () => {
     if (file) {
       setSelectedFile(file);
       
-      // Create a preview of the selected image
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreviewImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
       
-      // Reset previous results
-      setParsedImage(null);
-      setParsedContent(null);
-      setParseLatency(null);
       setError(null);
     }
   };
@@ -108,7 +104,6 @@ export const OmniparserView: React.FC = () => {
       reader.readAsDataURL(file);
       reader.onload = () => {
         const base64String = reader.result as string;
-        // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
         const base64 = base64String.split(',')[1];
         resolve(base64);
       };
@@ -127,7 +122,6 @@ export const OmniparserView: React.FC = () => {
       setIsParsing(true);
       setError(null);
 
-      // Get the parse endpoint
       const parseEndpoint = omniparserService.endpoints.find(
         endpoint => endpoint.path === '/parse/' && endpoint.method === 'POST'
       );
@@ -136,10 +130,8 @@ export const OmniparserView: React.FC = () => {
         throw new Error('Parse endpoint not found');
       }
 
-      // Convert image to base64
       const base64Image = await fileToBase64(selectedFile);
 
-      // Use Tauri's fetch which bypasses CORS
       const response = await fetch(getEndpointUrl(omniparserService, parseEndpoint), {
         method: 'POST',
         headers: {
@@ -150,15 +142,15 @@ export const OmniparserView: React.FC = () => {
 
       const data = await response.json() as ParseResponse;
       
-      // Update state with the response data
-      setParsedImage(`data:image/jpeg;base64,${data.som_image_base64}`);
-      setParsedContent(data.parsed_content_list);
-      setParseLatency(data.latency);
+      // Store the parse result in the service store
+      addEndpointOutput('omniparser', '/parse/', data);
       
       console.log('Parse successful:', data);
     } catch (err) {
       console.error('Parse error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(errorMessage);
+      addEndpointOutput('omniparser', '/parse/', null, errorMessage);
     } finally {
       setIsParsing(false);
     }
@@ -168,16 +160,18 @@ export const OmniparserView: React.FC = () => {
   const handleReset = () => {
     setSelectedFile(null);
     setPreviewImage(null);
-    setParsedImage(null);
-    setParsedContent(null);
-    setParseLatency(null);
     setError(null);
     
-    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
+
+  // Get the latest parse result for display
+  const latestParseResult = getLatestParseResult();
+  const parsedImage = latestParseResult?.data ? `data:image/jpeg;base64,${latestParseResult.data.som_image_base64}` : null;
+  const parsedContent = latestParseResult?.data?.parsed_content_list;
+  const parseLatency = latestParseResult?.data?.latency;
 
   return (
     <div className="flex flex-col p-6 h-full overflow-y-auto">

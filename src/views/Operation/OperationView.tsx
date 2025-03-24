@@ -3,6 +3,7 @@ import { useServiceStore } from '../../store/service/serviceStore';
 import { OmniparserView } from '../Omniparser/OmniparserView';
 import { OperatorView } from '../Operator/OperatorView';
 import { OllamaView } from '../Ollama/OllamaView';
+import { DockView } from '../Dock/DockView';
 
 export const OperationView: React.FC = () => {
     const selectedService = useServiceStore(state => state.selectedService);
@@ -16,6 +17,11 @@ export const OperationView: React.FC = () => {
                     <p>Select a service from the sidebar to get started</p>
                 </div>
             );
+        }
+
+        // Special case for Dock view
+        if (selectedService === 'dock') {
+            return <DockView />;
         }
 
         // Get the selected service object
