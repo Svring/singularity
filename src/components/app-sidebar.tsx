@@ -1,4 +1,5 @@
-import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer } from "lucide-react"
+import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer, Gauge } from "lucide-react"
+import { Link } from "react-router-dom"
 
 import {
   Sidebar,
@@ -29,9 +30,18 @@ import {
 import { Button } from "@/components/ui/button"
 
 import { useTheme } from "@/components/theme-provider"
+import { useServiceStore } from "@/store/service/serviceStore"
+import { useEffect } from "react"
+
+
 
 // Menu items.
 const items = [
+  {
+    title: "Dock",
+    url: "/dock",
+    icon: Gauge,
+  },
   {
     title: "Omniparser",
     url: "/omniparser",
@@ -47,34 +57,35 @@ const items = [
 export function AppSidebar() {
   const { theme, setTheme } = useTheme();
 
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
-  };
+  const loadServiceConfig = useServiceStore(state => state.loadServiceConfig);
+  const services = useServiceStore(state => state.services);
+
+  useEffect(() => {
+    loadServiceConfig();
+  }, [loadServiceConfig]);
+
+  console.log(services);
 
   return (
     <Sidebar variant="floating">
 
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton>
-                  Select LLM
-                  <ChevronDown className="ml-auto" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[--radix-popper-anchor-width]">
-                <DropdownMenuItem>
-                  <span>Claude-3-7</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <span>GPT-4o</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton>
+              Select LLM
+              <ChevronDown className="ml-auto" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-[--radix-popper-anchor-width]">
+            <DropdownMenuItem>
+              <span>Claude-3-7</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <span>GPT-4o</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarHeader>
 
       <SidebarContent>
@@ -92,10 +103,10 @@ export function AppSidebar() {
                   {items.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
-                        <a href={item.url}>
+                        <Link to={item.url}>
                           <item.icon />
                           <span>{item.title}</span>
-                        </a>
+                        </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
@@ -115,7 +126,7 @@ export function AppSidebar() {
             variant="ghost"
             size="icon"
             className="rounded-full"
-            onClick={toggleTheme}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             aria-label="Toggle theme"
           >
             {theme === 'dark' ? <Sun className="h-[1.2rem] w-[1.2rem]" /> : <Moon className="h-[1.2rem] w-[1.2rem]" />}

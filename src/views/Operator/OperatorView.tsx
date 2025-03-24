@@ -2,6 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { useServiceStore } from '../../store/service/serviceStore';
 import { getEndpointUrl } from '../../models/service/serviceModel';
 import { fetch } from '@tauri-apps/plugin-http';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Checkbox } from "@/components/ui/checkbox"
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
 
 // Types for the Operator service responses
 interface ProbeResponse {
@@ -31,10 +53,6 @@ interface ScreenshotBase64Response {
 }
 
 export const OperatorView: React.FC = () => {
-  const [probeStatus, setProbeStatus] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  
   // Mouse control states
   const [mouseX, setMouseX] = useState<number>(0);
   const [mouseY, setMouseY] = useState<number>(0);
@@ -55,69 +73,49 @@ export const OperatorView: React.FC = () => {
   const operatorService = useServiceStore(state => state.getService('operator'));
   const updateServiceStatus = useServiceStore(state => state.updateServiceStatus);
 
-  // Automatically check service status when component mounts
+  // Check service status periodically
   useEffect(() => {
-    if (operatorService) {
-      handleProbe();
-    }
-  }, []);
+    const checkServiceStatus = async () => {
+      if (!operatorService) return;
 
-  // Send request to the probe endpoint
-  const handleProbe = async () => {
-    if (!operatorService) {
-      setError('Service not available');
-      return;
-    }
+      try {
+        const probeEndpoint = operatorService.endpoints.find(
+          endpoint => endpoint.path === '/probe' && endpoint.method === 'GET'
+        );
 
-    try {
-      setIsLoading(true);
-      setError(null);
+        if (!probeEndpoint) {
+          throw new Error('Probe endpoint not found');
+        }
 
-      // Get the probe endpoint
-      const probeEndpoint = operatorService.endpoints.find(
-        endpoint => endpoint.path === '/' && endpoint.method === 'GET'
-      );
+        console.log("Probe endpoint:", getEndpointUrl(operatorService, probeEndpoint));
 
-      if (!probeEndpoint) {
-        throw new Error('Probe endpoint not found');
+        const response = await fetch(getEndpointUrl(operatorService, probeEndpoint));
+        const data = await response.json() as ProbeResponse;
+        console.log("Probe response:", data);
+        updateServiceStatus('operator', 'online');
+        
+        // Get screen size after successful probe
+        handleGetScreenSize();
+      } catch (err) {
+        console.error('Service status check failed:', err);
+        updateServiceStatus('operator', 'inactive');
       }
+    };
 
-      // Use Tauri's fetch which bypasses CORS
-      const response = await fetch(getEndpointUrl(operatorService, probeEndpoint));
-      
-      const data = await response.json() as ProbeResponse;
-      setProbeStatus(data.message);
-      
-      // Update service status to running in the store
-      updateServiceStatus('operator', 'running');
-      
-      console.log('Probe successful:', data);
-      
-      // Get screen size after successful probe
-      handleGetScreenSize();
-    } catch (err) {
-      console.error('Probe error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      
-      // Update service status to error in the store
-      updateServiceStatus('operator', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    // Check immediately
+    checkServiceStatus();
+
+    // Then check every 30 seconds
+    const interval = setInterval(checkServiceStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Get screen size
   const handleGetScreenSize = async () => {
-    if (!operatorService) {
-      setError('Service not available');
-      return;
-    }
+    if (!operatorService) return;
 
     try {
-      setIsLoading(true);
-      setError(null);
-
-      // Get the screen_size endpoint
       const screenSizeEndpoint = operatorService.endpoints.find(
         endpoint => endpoint.path === '/screen_size' && endpoint.method === 'GET'
       );
@@ -126,37 +124,20 @@ export const OperatorView: React.FC = () => {
         throw new Error('Screen size endpoint not found');
       }
 
-      // Use Tauri's fetch which bypasses CORS
       const response = await fetch(getEndpointUrl(operatorService, screenSizeEndpoint));
-      
       const data = await response.json() as ScreenSizeResponse;
       setScreenSize(data);
-      
-      // Update region with screen size
       setRegion([0, 0, data.width / 2, data.height / 2]);
-      
-      console.log('Screen size retrieved:', data);
     } catch (err) {
       console.error('Screen size error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Handle mouse click
   const handleMouseClick = async () => {
-    if (!operatorService) {
-      setError('Service not available');
-      return;
-    }
+    if (!operatorService) return;
 
     try {
-      setIsLoading(true);
-      setError(null);
-      setActionResult(null);
-
-      // Get the click endpoint
       const clickEndpoint = operatorService.endpoints.find(
         endpoint => endpoint.path === '/click' && endpoint.method === 'POST'
       );
@@ -165,7 +146,6 @@ export const OperatorView: React.FC = () => {
         throw new Error('Click endpoint not found');
       }
 
-      // Use Tauri's fetch which bypasses CORS
       const response = await fetch(getEndpointUrl(operatorService, clickEndpoint), {
         method: 'POST',
         headers: {
@@ -180,29 +160,16 @@ export const OperatorView: React.FC = () => {
 
       const data = await response.json() as ClickResponse;
       setActionResult(data.message);
-      
-      console.log('Click successful:', data);
     } catch (err) {
       console.error('Click error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Handle mouse move
   const handleMouseMove = async () => {
-    if (!operatorService) {
-      setError('Service not available');
-      return;
-    }
+    if (!operatorService) return;
 
     try {
-      setIsLoading(true);
-      setError(null);
-      setActionResult(null);
-
-      // Get the move endpoint
       const moveEndpoint = operatorService.endpoints.find(
         endpoint => endpoint.path === '/move' && endpoint.method === 'POST'
       );
@@ -211,7 +178,6 @@ export const OperatorView: React.FC = () => {
         throw new Error('Move endpoint not found');
       }
 
-      // Use Tauri's fetch which bypasses CORS
       const response = await fetch(getEndpointUrl(operatorService, moveEndpoint), {
         method: 'POST',
         headers: {
@@ -225,28 +191,17 @@ export const OperatorView: React.FC = () => {
 
       const data = await response.json() as MoveResponse;
       setActionResult(data.message);
-      
-      console.log('Move successful:', data);
     } catch (err) {
       console.error('Move error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Handle screenshot capture
   const handleScreenshot = async () => {
-    if (!operatorService) {
-      setError('Service not available');
-      return;
-    }
+    if (!operatorService) return;
 
     try {
       setIsCapturing(true);
-      setError(null);
-
-      // Get the screenshot_base64 endpoint
       const screenshotEndpoint = operatorService.endpoints.find(
         endpoint => endpoint.path === '/screenshot_base64' && endpoint.method === 'POST'
       );
@@ -255,18 +210,15 @@ export const OperatorView: React.FC = () => {
         throw new Error('Screenshot endpoint not found');
       }
 
-      // Prepare request body
       const requestBody: any = {
         format: screenshotFormat,
         full_screen: isFullScreen
       };
 
-      // Add region if not full screen
       if (!isFullScreen) {
         requestBody.region = region;
       }
 
-      // Use Tauri's fetch which bypasses CORS
       const response = await fetch(getEndpointUrl(operatorService, screenshotEndpoint), {
         method: 'POST',
         headers: {
@@ -276,14 +228,9 @@ export const OperatorView: React.FC = () => {
       });
 
       const data = await response.json() as ScreenshotBase64Response;
-      
-      // Set the screenshot image with the correct data URL format
       setScreenshotImage(`data:image/${data.format};base64,${data.base64_image}`);
-      
-      console.log('Screenshot successful:', data);
     } catch (err) {
       console.error('Screenshot error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       setIsCapturing(false);
     }
@@ -300,250 +247,277 @@ export const OperatorView: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col p-6 h-full overflow-y-auto">
-      <h1 className="text-xl font-bold text-white mb-6">Operator Service</h1>
-      
-      {/* Service Status */}
-      <div className="bg-gray-700 rounded-lg p-4 shadow mb-4">
-        <h2 className="text-lg font-semibold text-white mb-3">Service Status</h2>
-        
-        <div className="flex items-center mb-4">
-          <div className={`w-3 h-3 rounded-full mr-2 ${
-            operatorService?.status === 'running' ? 'bg-green-500' : 
-            operatorService?.status === 'error' ? 'bg-red-500' : 'bg-gray-500'
-          }`}></div>
-          <span className="text-gray-300">{operatorService?.status || 'unknown'}</span>
-        </div>
-        
-        <button 
-          onClick={handleProbe}
-          disabled={isLoading}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-        >
-          {isLoading ? 'Checking...' : 'Check Service Health'}
-        </button>
-        
-        {probeStatus && (
-          <div className="mt-3 p-3 bg-gray-600 rounded text-gray-200">
-            <p><strong>Status:</strong> {probeStatus}</p>
+    <div className="flex flex-col p-6 h-full overflow-y-auto space-y-6">
+      <div className="flex flex-col space-y-2">
+        <h1 className="text-2xl font-bold">Operator</h1>
+
+        {/* Service Info */}
+        <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+          <span className="font-mono">{operatorService?.baseUrl}:{operatorService?.port}</span>
+          <span>•</span>
+          <div className="flex items-center space-x-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${operatorService?.status === 'online' ? 'bg-green-500' :
+              operatorService?.status === 'inactive' ? 'bg-muted' : 'bg-destructive'
+              }`}></div>
+            <span className="capitalize">{operatorService?.status || 'unknown'}</span>
           </div>
-        )}
+        </div>
+
+        {/* Service Description */}
+        <div className="mt-2 text-sm text-muted-foreground">
+          <p>
+            The Operator service provides mouse control and screen capture capabilities.
+            It allows you to move the mouse cursor, perform clicks, and take screenshots of the entire screen or specific regions.
+          </p>
+        </div>
       </div>
-      
-      {/* Screen Size Information */}
-      {operatorService?.status === 'running' && screenSize && (
-        <div className="bg-gray-700 rounded-lg p-4 shadow mb-4">
-          <h2 className="text-lg font-semibold text-white mb-3">Screen Information</h2>
-          <div className="p-3 bg-gray-600 rounded text-gray-200">
-            <p><strong>Width:</strong> {screenSize.width}px</p>
-            <p><strong>Height:</strong> {screenSize.height}px</p>
-          </div>
-          <button 
-            onClick={handleGetScreenSize}
-            disabled={isLoading}
-            className="mt-3 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            Refresh Screen Size
-          </button>
-        </div>
-      )}
-      
-      {/* Mouse Control Section */}
-      {operatorService?.status === 'running' && (
-        <div className="bg-gray-700 rounded-lg p-4 shadow mb-4">
-          <h2 className="text-lg font-semibold text-white mb-3">Mouse Control</h2>
-          
-          {/* Coordinates Input */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                X Coordinate
-              </label>
-              <input
-                type="number"
-                value={mouseX}
-                onChange={(e) => setMouseX(parseInt(e.target.value) || 0)}
-                className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Y Coordinate
-              </label>
-              <input
-                type="number"
-                value={mouseY}
-                onChange={(e) => setMouseY(parseInt(e.target.value) || 0)}
-                className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-              />
-            </div>
-          </div>
-          
-          {/* Button Type Selection */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Button Type
-            </label>
-            <select
-              value={buttonType}
-              onChange={(e) => setButtonType(e.target.value as 'left' | 'right' | 'middle')}
-              className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-            >
-              <option value="left">Left Button</option>
-              <option value="right">Right Button</option>
-              <option value="middle">Middle Button</option>
-            </select>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex space-x-2 mb-4">
-            <button
-              onClick={handleMouseClick}
-              disabled={isLoading}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-            >
-              Click at Position
-            </button>
-            
-            <button
-              onClick={handleMouseMove}
-              disabled={isLoading}
-              className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-            >
-              Move to Position
-            </button>
-          </div>
 
-          {/* Action Result */}
-          {actionResult && (
-            <div className="mt-3 p-3 bg-gray-600 rounded text-gray-200">
-              <p>{actionResult}</p>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Screenshot Section */}
-      {operatorService?.status === 'running' && (
-        <div className="bg-gray-700 rounded-lg p-4 shadow mb-4">
-          <h2 className="text-lg font-semibold text-white mb-3">Take Screenshot</h2>
-          
-          {/* Screenshot Options */}
-          <div className="mb-4">
-            <div className="flex items-center mb-3">
-              <input
-                type="checkbox"
-                id="fullscreen"
-                checked={isFullScreen}
-                onChange={(e) => setIsFullScreen(e.target.checked)}
-                className="mr-2"
-              />
-              <label htmlFor="fullscreen" className="text-sm font-medium text-gray-300">
-                Full Screen
-              </label>
-            </div>
-            
-            {/* Region Selection (when not full screen) */}
-            {!isFullScreen && (
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Left (X)
-                  </label>
-                  <input
-                    type="number"
-                    value={region[0]}
-                    onChange={(e) => handleRegionChange(0, e.target.value)}
-                    className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  />
+      <Tabs defaultValue="mouse" className="w-full flex-1">
+        <TabsList className='grid w-full grid-cols-2'>
+          <TabsTrigger value="mouse">Mouse Control</TabsTrigger>
+          <TabsTrigger value="screenshot">Screenshot</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="mouse" className="space-y-4">
+          <div className="flex gap-4">
+            {/* Mouse Control Card */}
+            <Card className="w-1/2 flex flex-col">
+              <CardHeader className="flex-none">
+                <CardTitle>Mouse Control</CardTitle>
+                <CardDescription>Control mouse movement and clicks</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto">
+                <div className="space-y-4">
+                  {/* Coordinates Input */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
+                        X Coordinate
+                      </label>
+                      <Input
+                        value={mouseX}
+                        onChange={(e) => setMouseX(parseInt(e.target.value) || 0)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
+                        Y Coordinate
+                      </label>
+                      <Input
+                        value={mouseY}
+                        onChange={(e) => setMouseY(parseInt(e.target.value) || 0)}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Button Type Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-2">
+                      Button Type
+                    </label>
+                    <Select value={buttonType} onValueChange={(value: 'left' | 'right' | 'middle') => setButtonType(value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select button type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="left">Left Button</SelectItem>
+                        <SelectItem value="right">Right Button</SelectItem>
+                        <SelectItem value="middle">Middle Button</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={handleMouseClick}
+                      variant="default"
+                      className="flex-1"
+                    >
+                      Click at Position
+                    </Button>
+                    
+                    <Button
+                      onClick={handleMouseMove}
+                      variant="secondary"
+                      className="flex-1"
+                    >
+                      Move to Position
+                    </Button>
+                  </div>
+
+                  {/* Action Result */}
+                  {actionResult && (
+                    <div className="p-3 bg-muted rounded text-muted-foreground">
+                      <p>{actionResult}</p>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Top (Y)
-                  </label>
-                  <input
-                    type="number"
-                    value={region[1]}
-                    onChange={(e) => handleRegionChange(1, e.target.value)}
-                    className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Width
-                  </label>
-                  <input
-                    type="number"
-                    value={region[2]}
-                    onChange={(e) => handleRegionChange(2, e.target.value)}
-                    className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Height
-                  </label>
-                  <input
-                    type="number"
-                    value={region[3]}
-                    onChange={(e) => handleRegionChange(3, e.target.value)}
-                    className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-                  />
-                </div>
-              </div>
-            )}
-            
-            {/* Format Selection */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Image Format
-              </label>
-              <select
-                value={screenshotFormat}
-                onChange={(e) => setScreenshotFormat(e.target.value)}
-                className="w-full p-2 bg-gray-800 border border-gray-600 rounded text-white"
-              >
-                <option value="png">PNG</option>
-                <option value="jpg">JPG</option>
-              </select>
-            </div>
+              </CardContent>
+            </Card>
+
+            {/* Screen Info Card */}
+            <Card className="w-1/2 flex flex-col">
+              <CardHeader className="flex-none">
+                <CardTitle>Screen Information</CardTitle>
+                <CardDescription>Current screen dimensions</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto">
+                {screenSize ? (
+                  <div className="space-y-4">
+                    <div className="p-3 bg-muted rounded">
+                      <p className="text-sm"><span className="font-medium">Width:</span> {screenSize.width}px</p>
+                      <p className="text-sm"><span className="font-medium">Height:</span> {screenSize.height}px</p>
+                    </div>
+                    <Button 
+                      onClick={handleGetScreenSize}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      Refresh Screen Size
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Screen size information not available
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-          
-          {/* Capture Button */}
-          <button
-            onClick={handleScreenshot}
-            disabled={isCapturing}
-            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-          >
-            {isCapturing ? 'Capturing...' : 'Take Screenshot'}
-          </button>
+        </TabsContent>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mt-3 p-3 bg-red-900/50 text-red-200 rounded">
-              <p>{error}</p>
-            </div>
-          )}
+        <TabsContent value="screenshot" className="space-y-4">
+          <div className="flex gap-4">
+            {/* Screenshot Options Card */}
+            <Card className="w-1/2 flex flex-col">
+              <CardHeader className="flex-none">
+                <CardTitle>Screenshot Options</CardTitle>
+                <CardDescription>Configure screenshot settings</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto">
+                <div className="space-y-4">
+                  {/* Full Screen Option */}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="fullscreen"
+                      checked={isFullScreen}
+                      onCheckedChange={(checked) => setIsFullScreen(checked === true)}
+                    />
+                    <label
+                      htmlFor="fullscreen"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Full Screen
+                    </label>
+                  </div>
+                  
+                  {/* Region Selection */}
+                  {!isFullScreen && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                          Left (X)
+                        </label>
+                        <Input
+                          type="number"
+                          value={region[0]}
+                          onChange={(e) => handleRegionChange(0, e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                          Top (Y)
+                        </label>
+                        <Input
+                          type="number"
+                          value={region[1]}
+                          onChange={(e) => handleRegionChange(1, e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                          Width
+                        </label>
+                        <Input
+                          type="number"
+                          value={region[2]}
+                          onChange={(e) => handleRegionChange(2, e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                          Height
+                        </label>
+                        <Input
+                          type="number"
+                          value={region[3]}
+                          onChange={(e) => handleRegionChange(3, e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Format Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-2">
+                      Image Format
+                    </label>
+                    <Select value={screenshotFormat} onValueChange={setScreenshotFormat}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select image format" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="png">PNG</SelectItem>
+                        <SelectItem value="jpg">JPG</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="flex-none">
+                <Button
+                  onClick={handleScreenshot}
+                  disabled={isCapturing}
+                  variant="default"
+                  className="w-full"
+                >
+                  {isCapturing ? 'Capturing...' : 'Take Screenshot'}
+                </Button>
+              </CardFooter>
+            </Card>
 
-          {/* Screenshot Result */}
-          {screenshotImage && (
-            <div className="mt-4">
-              <h3 className="text-md font-medium text-gray-300 mb-2">Screenshot Result</h3>
-              <img 
-                src={screenshotImage} 
-                alt="Screenshot" 
-                className="max-w-full border border-gray-600 rounded"
-              />
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Service Info */}
-      <div className="text-gray-400 text-sm">
-        <p>Port: {operatorService?.port}</p>
-        <p>Base URL: {operatorService?.baseUrl}</p>
-      </div>
+            {/* Screenshot Result Card */}
+            <Card className="w-1/2 flex flex-col">
+              <CardHeader className="flex-none">
+                <CardTitle>Screenshot Result</CardTitle>
+                <CardDescription>Captured screen image</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto">
+                {screenshotImage ? (
+                  <div className="border border-border rounded p-1">
+                    <img 
+                      src={screenshotImage} 
+                      alt="Screenshot" 
+                      className="max-w-full max-h-[400px] object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Take a screenshot to see the result
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

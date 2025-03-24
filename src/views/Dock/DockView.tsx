@@ -1,5 +1,8 @@
 import React from 'react';
 import { useServiceStore } from '../../store/service/serviceStore';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface OutputDisplayProps {
   timestamp: number;
@@ -12,12 +15,12 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ timestamp, data, error })
   const formattedTime = date.toLocaleTimeString();
 
   return (
-    <div className="border border-gray-700 rounded-lg p-3 mb-2 bg-gray-800/50">
-      <div className="text-xs text-gray-500 mb-2">{formattedTime}</div>
+    <div className="border border-border rounded-lg p-3 mb-2 bg-muted/50">
+      <div className="text-xs text-muted-foreground mb-2">{formattedTime}</div>
       {error ? (
-        <div className="text-red-400">{error}</div>
+        <div className="text-destructive">{error}</div>
       ) : (
-        <pre className="text-sm text-gray-300 whitespace-pre-wrap overflow-auto max-h-40">
+        <pre className="text-sm text-foreground/80 whitespace-pre-wrap overflow-auto max-h-40">
           {JSON.stringify(data, null, 2)}
         </pre>
       )}
@@ -48,126 +51,161 @@ export const DockView: React.FC = () => {
 
   // Get all service names
   const serviceNames = Object.keys(services);
+  
+  // Active service state
+  const [activeService, setActiveService] = React.useState<string>(serviceNames[0] || 'omniparser');
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-black rounded-lg">
-      <div className="text-xl font-bold text-white p-4 border-b border-gray-800">
+    <div className="flex flex-col h-full overflow-hidden rounded-lg bg-background">
+      <div className="text-2xl font-bold p-4 border-b border-border">
         Service Outputs
       </div>
       
       <div className="flex-1 overflow-y-auto">
         {/* Service Tabs */}
-        <div className="flex border-b border-gray-800">
+        <div className="flex border-b border-border">
           {serviceNames.map(serviceName => (
-            <div key={serviceName} className="px-4 py-2 text-white cursor-pointer hover:bg-gray-800">
+            <button 
+              key={serviceName} 
+              className={`px-4 py-2 cursor-pointer hover:bg-muted transition-colors ${
+                activeService === serviceName 
+                  ? 'border-b-2 border-primary text-primary font-medium' 
+                  : 'text-muted-foreground'
+              }`}
+              onClick={() => setActiveService(serviceName)}
+            >
               {serviceName}
-            </div>
+            </button>
           ))}
         </div>
         
         {/* Service Output Sections */}
         <div className="p-4 flex flex-wrap gap-4">
           {/* Omniparser Section */}
-          <div className="flex-1 min-w-[300px] bg-gray-900 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-white">Omniparser</h2>
-              <button
-                onClick={() => handleClearOutputs('omniparser')}
-                className="px-2 py-1 text-sm bg-red-600/30 text-red-200 rounded hover:bg-red-600/50"
-              >
-                Clear All
-              </button>
-            </div>
-            {Object.entries(getServiceOutputs('omniparser')).map(([path, outputs]) => (
-              <div key={path} className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-medium text-gray-400">{path}</h3>
-                  <button
-                    onClick={() => handleClearOutputs('omniparser', path)}
-                    className="px-1.5 py-0.5 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
-                  >
-                    Clear
-                  </button>
-                </div>
-                {outputs.map((output, index) => (
-                  <OutputDisplay
-                    key={index}
-                    timestamp={output.timestamp}
-                    data={output.data}
-                    error={output.error}
-                  />
-                ))}
+          {activeService === 'omniparser' && (
+            <div className="w-full bg-card rounded-lg p-4 shadow">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Omniparser</h2>
+                <Button
+                  onClick={() => handleClearOutputs('omniparser')}
+                  variant="destructive"
+                  size="sm"
+                >
+                  Clear All
+                </Button>
               </div>
-            ))}
-          </div>
+              {Object.entries(getServiceOutputs('omniparser')).map(([path, outputs]) => (
+                <div key={path} className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-muted-foreground">{path}</h3>
+                    <Button
+                      onClick={() => handleClearOutputs('omniparser', path)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                  {outputs.length > 0 ? (
+                    outputs.map((output, index) => (
+                      <OutputDisplay
+                        key={index}
+                        timestamp={output.timestamp}
+                        data={output.data}
+                        error={output.error}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground italic">No outputs yet</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Operator Section */}
-          <div className="flex-1 min-w-[300px] bg-gray-900 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-white">Operator</h2>
-              <button
-                onClick={() => handleClearOutputs('operator')}
-                className="px-2 py-1 text-sm bg-red-600/30 text-red-200 rounded hover:bg-red-600/50"
-              >
-                Clear All
-              </button>
-            </div>
-            {Object.entries(getServiceOutputs('operator')).map(([path, outputs]) => (
-              <div key={path} className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-medium text-gray-400">{path}</h3>
-                  <button
-                    onClick={() => handleClearOutputs('operator', path)}
-                    className="px-1.5 py-0.5 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
-                  >
-                    Clear
-                  </button>
-                </div>
-                {outputs.map((output, index) => (
-                  <OutputDisplay
-                    key={index}
-                    timestamp={output.timestamp}
-                    data={output.data}
-                    error={output.error}
-                  />
-                ))}
+          {activeService === 'operator' && (
+            <div className="w-full bg-card rounded-lg p-4 shadow">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Operator</h2>
+                <Button
+                  onClick={() => handleClearOutputs('operator')}
+                  variant="destructive"
+                  size="sm"
+                >
+                  Clear All
+                </Button>
               </div>
-            ))}
-          </div>
+              {Object.entries(getServiceOutputs('operator')).map(([path, outputs]) => (
+                <div key={path} className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-muted-foreground">{path}</h3>
+                    <Button
+                      onClick={() => handleClearOutputs('operator', path)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                  {outputs.length > 0 ? (
+                    outputs.map((output, index) => (
+                      <OutputDisplay
+                        key={index}
+                        timestamp={output.timestamp}
+                        data={output.data}
+                        error={output.error}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground italic">No outputs yet</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Ollama Section */}
-          <div className="flex-1 min-w-[300px] bg-gray-900 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-white">Ollama</h2>
-              <button
-                onClick={() => handleClearOutputs('ollama')}
-                className="px-2 py-1 text-sm bg-red-600/30 text-red-200 rounded hover:bg-red-600/50"
-              >
-                Clear All
-              </button>
-            </div>
-            {Object.entries(getServiceOutputs('ollama')).map(([path, outputs]) => (
-              <div key={path} className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-sm font-medium text-gray-400">{path}</h3>
-                  <button
-                    onClick={() => handleClearOutputs('ollama', path)}
-                    className="px-1.5 py-0.5 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
-                  >
-                    Clear
-                  </button>
-                </div>
-                {outputs.map((output, index) => (
-                  <OutputDisplay
-                    key={index}
-                    timestamp={output.timestamp}
-                    data={output.data}
-                    error={output.error}
-                  />
-                ))}
+          {activeService === 'ollama' && (
+            <div className="w-full bg-card rounded-lg p-4 shadow">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Ollama</h2>
+                <Button
+                  onClick={() => handleClearOutputs('ollama')}
+                  variant="destructive"
+                  size="sm"
+                >
+                  Clear All
+                </Button>
               </div>
-            ))}
-          </div>
+              {Object.entries(getServiceOutputs('ollama')).map(([path, outputs]) => (
+                <div key={path} className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-muted-foreground">{path}</h3>
+                    <Button
+                      onClick={() => handleClearOutputs('ollama', path)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                  {outputs.length > 0 ? (
+                    outputs.map((output, index) => (
+                      <OutputDisplay
+                        key={index}
+                        timestamp={output.timestamp}
+                        data={output.data}
+                        error={output.error}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground italic">No outputs yet</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

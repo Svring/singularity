@@ -2,6 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useServiceStore } from '../../store/service/serviceStore';
 import { getEndpointUrl } from '../../models/service/serviceModel';
 import { fetch } from '@tauri-apps/plugin-http';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 
 // Types for the Omniparser service responses
 interface ProbeResponse {
@@ -9,16 +22,11 @@ interface ProbeResponse {
 }
 
 interface ParseResponse {
-  som_image_base64: string;
+  parsed_image_base64: string;
   parsed_content_list: any[];
-  latency: number;
 }
 
 export const OmniparserView: React.FC = () => {
-  const [probeStatus, setProbeStatus] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  
   // Parse endpoint states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -31,6 +39,38 @@ export const OmniparserView: React.FC = () => {
   const addEndpointOutput = useServiceStore(state => state.addEndpointOutput);
   const getEndpointOutputs = useServiceStore(state => state.getEndpointOutputs);
 
+  // Check service status periodically
+  useEffect(() => {
+    const checkServiceStatus = async () => {
+      if (!omniparserService) return;
+
+      try {
+        const probeEndpoint = omniparserService.endpoints.find(
+          endpoint => endpoint.path === '/probe/' && endpoint.method === 'GET'
+        );
+
+        if (!probeEndpoint) {
+          throw new Error('Probe endpoint not found');
+        }
+
+        const response = await fetch(getEndpointUrl(omniparserService, probeEndpoint));
+        const data = await response.json() as ProbeResponse;
+        updateServiceStatus('omniparser', 'online');
+      } catch (err) {
+        console.error('Service status check failed:', err);
+        updateServiceStatus('omniparser', 'inactive');
+      }
+    };
+
+    // Check immediately
+    checkServiceStatus();
+
+    // Then check every 30 seconds
+    const interval = setInterval(checkServiceStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Get the latest parse result
   const getLatestParseResult = () => {
     if (!omniparserService) return null;
@@ -38,62 +78,17 @@ export const OmniparserView: React.FC = () => {
     return outputs.length > 0 ? outputs[outputs.length - 1] : null;
   };
 
-  // Automatically check service status when component mounts
-  useEffect(() => {
-    if (omniparserService) {
-      handleProbe();
-    }
-  }, []);
-
-  // Send request to the probe endpoint
-  const handleProbe = async () => {
-    if (!omniparserService) {
-      setError('Service not available');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const probeEndpoint = omniparserService.endpoints.find(
-        endpoint => endpoint.path === '/probe/' && endpoint.method === 'GET'
-      );
-
-      if (!probeEndpoint) {
-        throw new Error('Probe endpoint not found');
-      }
-
-      const response = await fetch(getEndpointUrl(omniparserService, probeEndpoint));
-      const data = await response.json() as ProbeResponse;
-      
-      setProbeStatus(data.message);
-      updateServiceStatus('omniparser', 'running');
-      addEndpointOutput('omniparser', '/probe/', data);
-      
-      console.log('Probe successful:', data);
-    } catch (err) {
-      console.error('Probe error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      updateServiceStatus('omniparser', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // Handle file selection
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      
+
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreviewImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
-      
-      setError(null);
     }
   };
 
@@ -112,15 +107,11 @@ export const OmniparserView: React.FC = () => {
   };
 
   // Send request to the parse endpoint
-  const handleParse = async () => {
-    if (!selectedFile || !omniparserService) {
-      setError('No file selected or service not available');
-      return;
-    }
+  const handleParseRequest = async () => {
+    if (!selectedFile || !omniparserService) return;
 
     try {
       setIsParsing(true);
-      setError(null);
 
       const parseEndpoint = omniparserService.endpoints.find(
         endpoint => endpoint.path === '/parse/' && endpoint.method === 'POST'
@@ -141,16 +132,14 @@ export const OmniparserView: React.FC = () => {
       });
 
       const data = await response.json() as ParseResponse;
-      
+
       // Store the parse result in the service store
       addEndpointOutput('omniparser', '/parse/', data);
-      
+
       console.log('Parse successful:', data);
     } catch (err) {
       console.error('Parse error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-      setError(errorMessage);
-      addEndpointOutput('omniparser', '/parse/', null, errorMessage);
+      addEndpointOutput('omniparser', '/parse/', null, err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
       setIsParsing(false);
     }
@@ -160,8 +149,7 @@ export const OmniparserView: React.FC = () => {
   const handleReset = () => {
     setSelectedFile(null);
     setPreviewImage(null);
-    setError(null);
-    
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -169,144 +157,163 @@ export const OmniparserView: React.FC = () => {
 
   // Get the latest parse result for display
   const latestParseResult = getLatestParseResult();
-  const parsedImage = latestParseResult?.data ? `data:image/jpeg;base64,${latestParseResult.data.som_image_base64}` : null;
+  const parsedImage = latestParseResult?.data?.som_image_base64 ? `data:image/jpeg;base64,${latestParseResult.data.som_image_base64}` : undefined;
   const parsedContent = latestParseResult?.data?.parsed_content_list;
   const parseLatency = latestParseResult?.data?.latency;
 
   return (
-    <div className="flex flex-col p-6 h-full overflow-y-auto">
-      <h1 className="text-xl font-bold text-white mb-6">Omniparser Service</h1>
-      
-      {/* Service Status */}
-      <div className="bg-gray-700 rounded-lg p-4 shadow mb-4">
-        <h2 className="text-lg font-semibold text-white mb-3">Service Status</h2>
-        
-        <div className="flex items-center mb-4">
-          <div className={`w-3 h-3 rounded-full mr-2 ${
-            omniparserService?.status === 'running' ? 'bg-green-500' : 
-            omniparserService?.status === 'error' ? 'bg-red-500' : 'bg-gray-500'
-          }`}></div>
-          <span className="text-gray-300">{omniparserService?.status || 'unknown'}</span>
+    <div className="flex flex-col px-2 h-full space-y-6">
+      <div className="flex flex-col space-y-2">
+        <h1 className="text-2xl font-bold">Omniparser</h1>
+
+        {/* Service Info */}
+        <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+          <span className="font-mono">{omniparserService?.baseUrl}:{omniparserService?.port}</span>
+          <span>•</span>
+          <div className="flex items-center space-x-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${omniparserService?.status === 'online' ? 'bg-green-500' :
+              omniparserService?.status === 'inactive' ? 'bg-muted' : 'bg-destructive'
+              }`}></div>
+            <span className="capitalize">{omniparserService?.status || 'unknown'}</span>
+          </div>
         </div>
-        
-        <button 
-          onClick={handleProbe}
-          disabled={isLoading}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-        >
-          {isLoading ? 'Checking...' : 'Check Service Health'}
-        </button>
-        
-        {probeStatus && (
-          <div className="mt-3 p-3 bg-gray-600 rounded text-gray-200">
-            <p><strong>Status:</strong> {probeStatus}</p>
-          </div>
-        )}
+
+        {/* Service Description */}
+        <div className="mt-2 text-sm text-muted-foreground">
+          <p>
+            The Omniparser service is a powerful image parsing tool that can analyze and extract structured data from various types of images.
+            It supports multiple image formats and can identify text, tables, and other structured elements within images.
+            The service provides both visual feedback through annotated images and structured data output for further processing.
+          </p>
+        </div>
       </div>
-      
-      {/* Parse Image Section */}
-      {omniparserService?.status === 'running' && (
-        <div className="bg-gray-700 rounded-lg p-4 shadow mb-4">
-          <h2 className="text-lg font-semibold text-white mb-3">Parse Image</h2>
-          
-          {/* File Upload */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Upload Image
-            </label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="block w-full text-sm text-gray-400
-                        file:mr-4 file:py-2 file:px-4
-                        file:rounded file:border-0
-                        file:text-sm file:font-semibold
-                        file:bg-blue-900 file:text-blue-100
-                        hover:file:bg-blue-800"
-            />
-          </div>
 
-          {/* Preview Image */}
-          {previewImage && (
-            <div className="mb-4">
-              <h3 className="text-md font-medium text-gray-300 mb-2">Preview</h3>
-              <img 
-                src={previewImage} 
-                alt="Preview" 
-                className="max-w-md max-h-64 object-contain border border-gray-600 rounded"
-              />
-            </div>
-          )}
+      <Tabs defaultValue="parse" className="w-full flex-1">
+        <TabsList className='grid w-full grid-cols-1'>
+          <TabsTrigger value="parse">/parse</TabsTrigger>
+        </TabsList>
 
-          {/* Action Buttons */}
-          <div className="flex space-x-2 mb-4">
-            <button
-              onClick={handleParse}
-              disabled={isParsing || !selectedFile}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-            >
-              {isParsing ? 'Parsing...' : 'Parse Image'}
-            </button>
-            
-            <button
-              onClick={handleReset}
-              disabled={isParsing || (!selectedFile && !parsedImage)}
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed"
-            >
-              Reset
-            </button>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="mt-3 p-3 bg-red-900/50 text-red-200 rounded">
-              <p>{error}</p>
-            </div>
-          )}
-
-          {/* Parse Results */}
-          {parsedImage && (
-            <div className="mt-4">
-              <h3 className="text-md font-medium text-gray-300 mb-2">Parse Results</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Parsed Image */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-400 mb-2">Processed Image</h4>
-                  <img 
-                    src={parsedImage} 
-                    alt="Parsed" 
-                    className="max-w-full max-h-64 object-contain border border-gray-600 rounded"
-                  />
-                </div>
-                
-                {/* Parsed Content */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-400 mb-2">Parsed Content</h4>
-                  <div className="bg-gray-800 p-3 rounded max-h-64 overflow-y-auto">
-                    <pre className="text-xs text-gray-300 whitespace-pre-wrap">
-                      {JSON.stringify(parsedContent, null, 2)}
-                    </pre>
+        <TabsContent value="parse" className="flex flex-row space-y-4">
+          <div className="flex flex-1 gap-4">
+            {/* Input Card */}
+            <Card className="w-1/2 flex flex-col flex-1">
+              <CardHeader className="flex-none">
+                <CardTitle>Request</CardTitle>
+                <CardDescription>Upload an image to parse</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto">
+                <>
+                  {/* File Upload and Reset Button */}
+                  <div className="flex gap-2 mb-4">
+                    <div className="flex-1">
+                      <Input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="cursor-pointer"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleReset}
+                      disabled={isParsing || (!selectedFile && !parsedImage)}
+                      variant="outline"
+                    >
+                      Reset
+                    </Button>
                   </div>
-                  {parseLatency !== null && (
-                    <p className="mt-2 text-xs text-gray-400">
-                      Processing time: {parseLatency.toFixed(2)}ms
-                    </p>
+
+                  {/* Preview Image */}
+                  {previewImage && (
+                    <div>
+                      <div className="border border-border rounded p-1">
+                        <img
+                          src={previewImage}
+                          alt="Preview"
+                          className="max-w-full max-h-48 object-contain"
+                        />
+                      </div>
+                    </div>
                   )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Service Info */}
-      <div className="text-gray-400 text-sm">
-        <p>Port: {omniparserService?.port}</p>
-        <p>Base URL: {omniparserService?.baseUrl}</p>
-      </div>
+                </>
+              </CardContent>
+              <CardFooter className="flex-none">
+                <Button
+                  onClick={handleParseRequest}
+                  disabled={isParsing || !selectedFile}
+                  variant="default"
+                  className="w-full"
+                >
+                  {isParsing ? 'Parsing...' : 'Parse Image'}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* Output Card */}
+            <Card className="w-1/2 flex flex-col flex-1">
+              <CardHeader className="flex-none">
+                <CardTitle>Response</CardTitle>
+                <CardDescription>Parsed results and visualization</CardDescription>
+              </CardHeader>
+              <CardContent className="flex-1">
+                {latestParseResult?.data ? (
+                  <Tabs defaultValue="visual" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 mb-2">
+                      <TabsTrigger value="visual">Visual</TabsTrigger>
+                      <TabsTrigger value="data">Data</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="visual">
+                      <div className="border border-border rounded p-1">
+                        <img
+                          src={parsedImage}
+                          alt="Parsed"
+                          className="w-full object-contain"
+                        />
+                      </div>
+                      {parseLatency !== null && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Processing time: {parseLatency.toFixed(2)}ms
+                        </p>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="data">
+                      <div className="border border-border h-72 p-3 rounded overflow-y-auto">
+                        {parsedContent ? (
+                          <pre className="text-xs whitespace-pre-wrap">
+                            {JSON.stringify(parsedContent, null, 2)}
+                          </pre>
+                        ) : (
+                          <Skeleton className="h-24 w-full" />
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <div className="flex items-center justify-center h-64 text-muted-foreground">
+                    Upload and parse an image to see results
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="flex-none">
+                <Button
+                  onClick={() => {
+                    if (parsedContent) {
+                      navigator.clipboard.writeText(JSON.stringify(parsedContent, null, 2));
+                    }
+                  }}
+                  disabled={!parsedContent}
+                  variant="default"
+                  className="w-full"
+                >
+                  Copy to Clipboard
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

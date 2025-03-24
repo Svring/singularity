@@ -45,7 +45,7 @@ export const useServiceStore = create<ServiceStore>((set, get) => ({
         return get().services[serviceName];
     },
 
-    updateServiceStatus: (serviceName: string, status: LocalService['status']) => {
+    updateServiceStatus: (serviceName: string, status: 'inactive' | 'faulty' | 'online') => {
         set((state) => ({
             services: {
                 ...state.services,
@@ -135,14 +135,25 @@ function parseServiceConfig(config: any): { [key: string]: LocalService } {
     // Parse each service from the services object
     for (const [_, serviceConfig] of Object.entries(servicesConfig)) {
         const config = serviceConfig as any;
+        
+        // Map status values from config to our new status types
+        let status: 'inactive' | 'faulty' | 'online' = 'inactive';
+        if (config.status === 'running') {
+            status = 'online';
+        } else if (config.status === 'error') {
+            status = 'faulty';
+        }
+        
         services[config.name] = {
             serviceName: config.name,
             port: config.port,
             baseUrl: config.base_url,
+            routeUrl: config.route_url,
+            icon: config.icon,
             endpoints: parseEndpoints(config.endpoints || []),
-            status: config.status || 'stopped',
-            folderPath: config.folder_path,
-            initiationCommand: config.init_command
+            status: status,
+            folderPath: config.folder_path || '',
+            initiationCommand: config.init_command || ''
         };
     }
     
